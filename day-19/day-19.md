@@ -1,6 +1,4 @@
-# March 6, 2026
-
-## Bayesian Filters, Particle Filter and the Nav2 AMCL Localizer
+# Bayesian Filters, Particle Filter and the Nav2 AMCL Localizer
 
 Labbe's Kalman book chapters 11-12 cover Bayesian filtering beyond the KF. The particle filter is the general case and it makes no Gaussian or linearity assumptions, at the cost of higher computational load.
 

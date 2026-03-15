@@ -1,17 +1,32 @@
-.. uav-mechanics documentation master file, created by
-   sphinx-quickstart on Sun Mar 15 19:10:42 2026.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+UAV Mechanics & Implementation
+==========================
 
-uav-mechanics documentation
-===========================
-
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
-
+Welcome to the documentation. Go to the Home page for more information
+about this documentation. 
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 1
+   :caption: Docs
 
+   home
+   day-1
+   day-2
+   day-3
+   day-4
+   day-5
+   day-6
+   day-7
+   day-8
+   day-9
+   day-10
+   day-11
+   day-12
+   day-13
+   day-14
+   day-15
+   day-16
+   day-17
+   day-18
+   day-19
+   day-20
+   day-21

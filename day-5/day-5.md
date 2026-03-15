@@ -1,6 +1,4 @@
-# February 20, 2026
-
-## IMU, GPS, and Barometer
+# IMU, GPS, and Barometer
 
 ### IMU
 

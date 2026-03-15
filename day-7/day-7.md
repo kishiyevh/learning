@@ -1,6 +1,4 @@
-# February 22, 2026
-
-## Betaflight vs PX4 Flight Control Architecture Differences
+# Betaflight vs PX4 Flight Control Architecture Differences
 
 Spent the day in the Betaflight Configurator source and comparing it against PX4's control architecture. They solve the same base problem (keep a multirotor stable) but with very different priorities and design decisions.
 

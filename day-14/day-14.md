@@ -1,6 +1,4 @@
-# March 1, 2026
-
-## ROS2 TF2 Transformations and the Robot State Estimation Chain
+# ROS2 TF2 Transformations and the Robot State Estimation Chain
 
 Today tied together the ROS2 transform system with the state estimation work. TF2 is the coordinate frame management system in ROS2. It handles the tree of rigid body transforms that connects every sensor frame, body frame, and world frame in a robot system.
 

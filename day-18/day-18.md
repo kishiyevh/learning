@@ -1,6 +1,4 @@
-# March 5, 2026
-
-## Feature Descriptor Spaces and Matching Strategies
+# Feature Descriptor Spaces and Matching Strategies
 
 ### Descriptor space geometry
 

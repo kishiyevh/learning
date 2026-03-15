@@ -1,6 +1,4 @@
-# February 27, 2026
-
-## PX4 EKF2 State Vector, Fusion Logic, and Tuning Parameters
+# PX4 EKF2 State Vector, Fusion Logic, and Tuning Parameters
 
 ### State vector
 

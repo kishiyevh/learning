@@ -1,6 +1,4 @@
-# February 17, 2026
-
-## Visualization with RViz2 and PlotJuggler, cmd_vel Teleop
+# Visualization with RViz2 and PlotJuggler, cmd_vel Teleop
 
 After working through the kinematics math yesterday, today focused on actually seeing it work. The Husarion tutorial covers PlotJuggler and RViz2 as the two main visualization tools, and both ended up being more useful than I expected.
 

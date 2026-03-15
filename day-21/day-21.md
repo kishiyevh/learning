@@ -1,6 +1,4 @@
-# March 8, 2026
-
-## Full State Estimation Loop and Fusing VO with IMU and Reviewing the Stack
+# Full State Estimation Loop and Fusing VO with IMU and Reviewing the Stack
 
 The document will be about integrating the visual odometry output with a simple IMU-preintegration-based EKF and doing a full review pass of everything covered since February 16.
 

@@ -1,6 +1,4 @@
-# February 24, 2026
-
-## SuperPoint and how Learned Sparse Feature Detection Works
+# SuperPoint and how Learned Sparse Feature Detection Works
 
 ### Sparse vs dense features
 

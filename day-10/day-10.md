@@ -1,6 +1,4 @@
-# February 25, 2026
-
-## LightGlue-ONNX, Architecture and the ONNX Runtime Pipeline
+# LightGlue-ONNX, Architecture and the ONNX Runtime Pipeline
 
 Spent the day on the LightGlue-ONNX repo (https://github.com/fabio-sim/LightGlue-ONNX) and the ONNX Runtime performance documentation. The goal was to understand what LightGlue actually does differently from brute-force nearest-neighbor matching, and what the ONNX conversion pipeline looks like.
 

@@ -1,6 +1,4 @@
-# March 3, 2026
-
-## ONNX Runtime Performance Tuning and Pipeline Profiling
+# ONNX Runtime Performance Tuning and Pipeline Profiling
 
 Went through the ONNX Runtime performance documentation and did actual profiling of the SuperPoint + LightGlue pipeline. The GTX 1650 Ti has 4GB VRAM and compute capability 7.5 (Turing architecture), which supports cuDNN but not all TensorRT optimizations.
 

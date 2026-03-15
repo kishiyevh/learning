@@ -1,6 +1,4 @@
-# February 16, 2026
-
-## ROS2 Differential Drive Kinematics and the ROSbot Model
+# ROS2 Differential Drive Kinematics and the ROSbot Model
 
 The main idea is straightforward. The ROSbot has four wheels but is modeled as two virtual wheels, WL and WR, whose axes pass through the robot's geometric center. This lets you use the simpler differential drive kinematic equations without worrying about the geometry of each physical wheel separately. The virtual wheel velocities are just averages of their physical counterparts.
 

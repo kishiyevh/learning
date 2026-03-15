@@ -1,6 +1,4 @@
-# March 7, 2026
-
-## Visual Odometry Front-End and Integrating the Full Pipeline
+# Visual Odometry Front-End and Integrating the Full Pipeline
 
 ### The VO pipeline as a state machine
 

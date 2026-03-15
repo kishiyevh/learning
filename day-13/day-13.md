@@ -1,6 +1,4 @@
-# February 28, 2026
-
-## Triangulation and Recovering 3D Points from Two Views
+# Triangulation and Recovering 3D Points from Two Views
 
 ### The triangulation problem
 

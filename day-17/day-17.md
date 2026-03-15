@@ -1,6 +1,4 @@
-# March 4, 2026
-
-## ROS2 SLAM and Nav2 Navigation Stack Architecture
+# ROS2 SLAM and Nav2 Navigation Stack Architecture
 
 ### SLAM
 

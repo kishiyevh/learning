@@ -1,6 +1,4 @@
-# February 18, 2026
-
-## PID Controller, Theory and a Working 1D Implementation
+# PID Controller, Theory and a Working 1D Implementation
 
 The PID controller computes a correction signal based on the error between where you are and where you want to be. The three terms each contribute differently.
 

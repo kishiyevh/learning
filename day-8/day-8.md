@@ -1,6 +1,4 @@
-# February 23, 2026
-
-## Camera Models. Pinhole, Distortion, and Calibration
+# Camera Models. Pinhole, Distortion, and Calibration
 
 ### Pinhole camera model
 

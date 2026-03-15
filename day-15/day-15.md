@@ -1,6 +1,4 @@
-# March 2, 2026
-
-## Extended Kalman Filter for Visual-Inertial Odometry
+# Extended Kalman Filter for Visual-Inertial Odometry
 
 Today went deeper into the EKF for nonlinear systems — specifically oriented toward visual-inertial state estimation. The 1D filter from February 21 assumed linear dynamics. Real drone state estimation involves attitude quaternions, which require an Extended KF.
 

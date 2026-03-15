@@ -1,6 +1,4 @@
-# February 26, 2026
-
-## Geometric Vision Homography, Essential Matrix, and Fundamental Matrix
+# Geometric Vision Homography, Essential Matrix, and Fundamental Matrix
 
 ### Homography
 

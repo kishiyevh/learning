@@ -1,6 +1,4 @@
-# February 21, 2026
-
-## Kalman Filter, Concepts and a 1D Implementation from Scratch
+# Kalman Filter, Concepts and a 1D Implementation from Scratch
 
 Worked through Roger Labbe's Kalman filter Jupyter book (chapter 1-4) and the Khan Academy probability prereqs. The goal was to understand the predict-update cycle at the math level before looking at any library.
 
