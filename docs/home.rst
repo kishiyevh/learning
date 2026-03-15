@@ -6,7 +6,7 @@ UAV Mechanics: Theory & Implementation
 
 This documentation presents a **technical guide** exploring
 core topics in robotics, state estimation, perception, and autonomous systems.
-Each day focuses on a specific concept, combining **theoretical notes,
+Each topic focuses on a specific concept, combining **theoretical notes,
 mathematical formulations, and practical implementations** in Python and/or C++.
 
 The goal of this technical documentation is to build a structured understanding of the
@@ -54,7 +54,7 @@ This project is maintained by:
 
 **Huseyn Kishiyev**
 
-The documentation serves both as a
+The documentation serves as a
 public reference for others studying similar topics in robotics and
 autonomous systems.
 
