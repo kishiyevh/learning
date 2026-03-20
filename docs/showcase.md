@@ -59,11 +59,13 @@ $$
 \frac{\partial \mathcal{L}_\theta}{\partial \theta} = \frac{1}{N} \sum_{k=0}^{N-1} \left( \sum_{i=0}^k \frac{\partial l_k}{\partial \mathbf{x}_k} \prod_{j=i+1}^k \left( \frac{\partial \mathbf{x}_j}{\partial \mathbf{x}_{j-1}} e^{-\alpha \Delta t} \right) \frac{\partial \mathbf{x}_i}{\partial \theta} + \frac{\partial l_k}{\partial \mathbf{u}_k} \frac{\partial \mathbf{u}_k}{\partial \theta} \right)
 $$
 
-Here, 
+Here,
+
 $$
-\frac{\partial x_j}{\partial x_{j-1}}
+\frac{\partial \mathbf{x}_j}{\partial \mathbf{x}_{j-1}}
 $$
-is the Jacobian of the dynamics function. The decay term ensures that the influence of a state $x_j$ on an earlier action $u_i$ diminishes as the time gap increases. This effectively focuses the attention of the optimization on the immediate future, resulting in a robust and reactive flight policy.
+
+is the Jacobian of the dynamics function. The decay term ensures that the influence of a state $\mathbf{x}_j$ on an earlier action $u_i$ diminishes as the time gap increases. This effectively focuses the attention of the optimization on the immediate future, resulting in a robust and reactive flight policy.
 
 ## Perception Architecture and Implicit State Estimation
 
