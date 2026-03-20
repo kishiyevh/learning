@@ -9,6 +9,7 @@ about this documentation.
    :caption: Docs
 
    home
+   Recent Developments in the field of AI-native Autonomous UAV Vehicles <showcase>
    day-1
    day-2
    day-3

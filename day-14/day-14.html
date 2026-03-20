@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>day-14</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {  background-color: #f8f8f8; }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ef2929; } /* Alert */
+    code span.an { color: #8f5902; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #c4a000; } /* Attribute */
+    code span.bn { color: #0000cf; } /* BaseN */
+    code span.cf { color: #204a87; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4e9a06; } /* Char */
+    code span.cn { color: #000000; } /* Constant */
+    code span.co { color: #8f5902; font-style: italic; } /* Comment */
+    code span.cv { color: #8f5902; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #8f5902; font-weight: bold; font-style: italic; } /* Documentation */
+    code span.dt { color: #204a87; } /* DataType */
+    code span.dv { color: #0000cf; } /* DecVal */
+    code span.er { color: #a40000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #0000cf; } /* Float */
+    code span.fu { color: #000000; } /* Function */
+    code span.im { } /* Import */
+    code span.in { color: #8f5902; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #204a87; font-weight: bold; } /* Keyword */
+    code span.op { color: #ce5c00; font-weight: bold; } /* Operator */
+    code span.ot { color: #8f5902; } /* Other */
+    code span.pp { color: #8f5902; font-style: italic; } /* Preprocessor */
+    code span.sc { color: #000000; } /* SpecialChar */
+    code span.ss { color: #4e9a06; } /* SpecialString */
+    code span.st { color: #4e9a06; } /* String */
+    code span.va { color: #000000; } /* Variable */
+    code span.vs { color: #4e9a06; } /* VerbatimString */
+    code span.wa { color: #8f5902; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <script src="/usr/share/javascript/mathjax/tex-mml-chtml.js" type="text/javascript"></script>
+</head>
+<body>
+<h1 id="ros2-tf2-transformations-and-the-robot-state-estimation-chain">ROS2 TF2 Transformations and the Robot State Estimation Chain</h1>
+<p>Today tied together the ROS2 transform system with the state estimation work. TF2 is the coordinate frame management system in ROS2. It handles the tree of rigid body transforms that connects every sensor frame, body frame, and world frame in a robot system.</p>
+<h3 id="why-tf2-matters">Why TF2 matters</h3>
+<p>When we have an IMU on a drone, its data is expressed in the IMU body frame. The camera is mounted at a different position and orientation. The GPS antenna is somewhere else. To combine all of this in an EKF, every sensor reading needs to be transformed into a common frame (typically the robot body frame or the world frame).</p>
+<p>TF2 provides a time-indexed, interpolated lookup of any transform in the tree. You can ask “what was the transform from <code>camera_frame</code> to <code>base_link</code> at time T?” and get the answer by composing the chain of static and dynamic transforms.</p>
+<h3 id="tf2-tree-structure-for-a-drone">TF2 tree structure for a drone</h3>
+<p>A typical PX4/ROS2 drone TF tree:</p>
+<pre><code>map
+ └── odom
+      └── base_link
+           ├── imu_link
+           ├── gps_link
+           └── camera_link
+                └── camera_optical_frame</code></pre>
+<p>Static transforms (sensor placement, does not change) are broadcast once,</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="ex">ros2</span> run tf2_ros static_transform_publisher <span class="kw">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a>    <span class="ex">0.05</span> 0.0 0.02  0.0 0.0 0.0  base_link camera_link</span></code></pre></div>
+<p>This places the camera 5 cm forward, 2 cm up from the base_link origin, no rotation.</p>
+<p>Dynamic transforms (robot moving) are broadcast continuously by the odometry/EKF node.</p>
+<h3 id="listening-to-transforms-in-python">Listening to transforms in Python</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a><span class="im">import</span> rclpy</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a><span class="im">from</span> rclpy.node <span class="im">import</span> Node</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a><span class="im">import</span> tf2_ros</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a><span class="im">from</span> tf2_ros <span class="im">import</span> TransformException</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a><span class="im">from</span> geometry_msgs.msg <span class="im">import</span> PointStamped</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a><span class="im">import</span> tf2_geometry_msgs  <span class="co"># needed for do_transform_point</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true"></a><span class="kw">class</span> TFListener(Node):</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>):</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true"></a>        <span class="bu">super</span>().<span class="fu">__init__</span>(<span class="st">&quot;tf_listener&quot;</span>)</span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true"></a>        <span class="va">self</span>.tf_buffer   <span class="op">=</span> tf2_ros.Buffer()</span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true"></a>        <span class="va">self</span>.tf_listener <span class="op">=</span> tf2_ros.TransformListener(<span class="va">self</span>.tf_buffer, <span class="va">self</span>)</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true"></a></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true"></a>    <span class="kw">def</span> transform_point(<span class="va">self</span>, point_stamped, target_frame):</span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true"></a>        <span class="cf">try</span>:</span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true"></a>            <span class="cf">return</span> <span class="va">self</span>.tf_buffer.transform(point_stamped, target_frame)</span>
+<span id="cb3-17"><a href="#cb3-17" aria-hidden="true"></a>        <span class="cf">except</span> TransformException <span class="im">as</span> e:</span>
+<span id="cb3-18"><a href="#cb3-18" aria-hidden="true"></a>            <span class="va">self</span>.get_logger().warn(<span class="ss">f&quot;TF error: </span><span class="sc">{e}</span><span class="ss">&quot;</span>)</span>
+<span id="cb3-19"><a href="#cb3-19" aria-hidden="true"></a>            <span class="cf">return</span> <span class="va">None</span></span></code></pre></div>
+<h3 id="the-odom---map-transform">The odom -&gt; map transform</h3>
+<p>The <code>odom</code> frame is the starting position of the robot — the EKF outputs pose relative to where the robot was when it initialized. The <code>map</code> frame is a globally consistent frame that may shift when a new GPS fix comes in or a loop closure is detected.</p>
+<p>For a UAV in outdoor flight with GPS, the <code>map</code> frame is the GPS origin (first fix). The <code>odom -&gt; map</code> transform is initially identity and stays identity if there are no loop closures or GPS re-localizations.</p>
+<p>For indoor operation without GPS, the <code>map</code> frame is provided by a SLAM system (like RTAB-Map or ORB-SLAM3), and the <code>odom -&gt; map</code> transform is updated every time the SLAM system detects a loop closure and corrects accumulated drift.</p>
+<h3 id="quaternion-composition">Quaternion composition</h3>
+<p>A common source of bugs is quaternion composition order. In ROS2, quaternions follow the right-hand convention. Composing rotation A then rotation B:</p>
+<p><span class="math display">\[\mathbf{q}_{AB} = \mathbf{q}_B \otimes \mathbf{q}_A\]</span></p>
+<p>The order matters — it is not commutative. The TF2 <code>geometry_msgs.Transform</code> uses <code>tf2_ros.transformations</code> for this.</p>
+<p>References:</p>
+<ul>
+<li>https://docs.ros.org/en/humble/Tutorials/Intermediate/Tf2/Tf2-Main.html</li>
+<li>https://vnav.mit.edu/lectures.html (Lecture 7)</li>
+<li>https://docs.ros.org/en/humble/p/tf2_ros/</li>
+</ul>
+</body>
+</html>

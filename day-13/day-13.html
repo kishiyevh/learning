@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>day-13</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+  </style>
+  <script src="/usr/share/javascript/mathjax/tex-mml-chtml.js" type="text/javascript"></script>
+</head>
+<body>
+<h1 id="triangulation-and-recovering-3d-points-from-two-views">Triangulation and Recovering 3D Points from Two Views</h1>
+<h3 id="the-triangulation-problem">The triangulation problem</h3>
+<p>Given two camera projection matrices P0 and P1, and corresponding 2D points p0, p1, find the 3D point X such that:</p>
+<p><span class="math display">\[\lambda_0 \mathbf{p}_0 = \mathbf{P}_0 \mathbf{X}, \quad \lambda_1 \mathbf{p}_1 = \mathbf{P}_1 \mathbf{X}\]</span></p>
+<p>In the ideal (noise-free) case, the two rays from each camera center through p0 and p1 intersect exactly at X. In practice, due to pixel quantization and matching errors, the rays are skew lines and you find the midpoint of the shortest segment connecting them, or use a linear algebraic method.</p>
+<h3 id="dlt-triangulation">DLT triangulation</h3>
+<p>Expanding the cross product <code>p0 x (P0 X) = 0</code>:</p>
+<p>For each point correspondence, you get 4 equations (2 per view, 2 per view), but only 3 are independent (homogeneous). Stack them as <code>A X = 0</code> and solve with SVD — the solution is the last right singular vector.</p>
+<p>For the first camera (assume it is the world origin, P0 = K [I | 0]):</p>
+<p><span class="math display">\[\mathbf{A} = \begin{bmatrix} u_0 \mathbf{P}_0^{3T} - \mathbf{P}_0^{1T} \\ v_0 \mathbf{P}_0^{3T} - \mathbf{P}_0^{2T} \\ u_1 \mathbf{P}_1^{3T} - \mathbf{P}_1^{1T} \\ v_1 \mathbf{P}_1^{3T} - \mathbf{P}_1^{2T} \end{bmatrix}\]</span></p>
+<p>where P^{iT} is the i-th row of the projection matrix.</p>
+<p>OpenCV provides <code>cv2.triangulatePoints(P0, P1, pts0, pts1)</code> which uses this approach.</p>
+<h3 id="scale-ambiguity-in-monocular-visual-odometry">Scale ambiguity in monocular visual odometry</h3>
+<p>The recovered t from <code>cv2.recoverPose</code> is a unit vector, we know the direction of translation but not the magnitude. This is the fundamental scale ambiguity of monocular vision. Two scenes that differ only by a scale factor produce identical image measurements.</p>
+<p>To recover scale we need one of: - Known 3D reference (a measured object in the scene, like a calibration board on the ground) - IMU integration — the accelerometer gives real-world acceleration in m/s², which, when double-integrated and compared to the visual trajectory, constrains scale - GPS — absolute position from GPS combined with relative position from VO</p>
+<p>In the PX4 visual-inertial odometry flow (using EKF2 with external vision input), the GPS provides scale, and the visual odometry provides high-rate relative motion between GPS updates.</p>
+<h3 id="scale-from-imu-and-the-visual-inertial-alignment">Scale from IMU and the visual-inertial alignment</h3>
+<p>The alignment between the visual trajectory (up to scale) and the IMU trajectory (true scale) solves for the scale factor s, the initial velocity, and the gravity direction simultaneously. This is done in a batch optimization over a window of frames. VINS-Mono and OpenVINS both implement this initialization step.</p>
+<p>The optimization minimizes:</p>
+<p><span class="math display">\[\sum_k \left\| \mathbf{p}_{k+1}^{imu} - \mathbf{p}_k^{imu} - \mathbf{v}_k \Delta t - \frac{1}{2} \mathbf{g} \Delta t^2 - s \left(\mathbf{p}_{k+1}^{vis} - \mathbf{p}_k^{vis}\right) \right\|^2\]</span></p>
+<h3 id="implementation-note">Implementation note</h3>
+<p>The <code>triangulate_points.py</code> script demonstrates triangulation on a synthetic stereo pair, it creates two cameras with known relative pose, generates random 3D points, projects them into each camera, adds pixel noise, runs triangulation, and measures the 3D error. This is a clean way to verify the geometry pipeline before connecting to real image data.</p>
+<p>References:</p>
+<ul>
+<li>https://vnav.mit.edu/lectures.html (Lecture 6 — Triangulation and Structure)</li>
+<li>Hartley &amp; Zisserman “Multiple View Geometry” — Chapter 12</li>
+<li>https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html#gad3fc9a0c82b08df034234979960b778c</li>
+<li>VINS-Mono paper: Qin et al. arXiv:1708.03852</li>
+</ul>
+</body>
+</html>

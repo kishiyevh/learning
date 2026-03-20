@@ -9,6 +9,10 @@ core topics in robotics, state estimation, perception, and autonomous systems.
 Each topic focuses on a specific concept, combining **theoretical notes,
 mathematical formulations, and practical implementations** in Python and/or C++.
 
+We establish our foundation by replicating and running the complete navigation
+pipelines of several recent, state-of-the-art AI-native autonomous UAV systems.
+
+
 The goal of this technical documentation is to build a structured understanding of the
 fundamental building blocks used in modern robotic systems and autonomous
 vehicles, particularly those involving:

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>day-10</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {  background-color: #f8f8f8; }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ef2929; } /* Alert */
+    code span.an { color: #8f5902; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #c4a000; } /* Attribute */
+    code span.bn { color: #0000cf; } /* BaseN */
+    code span.cf { color: #204a87; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4e9a06; } /* Char */
+    code span.cn { color: #000000; } /* Constant */
+    code span.co { color: #8f5902; font-style: italic; } /* Comment */
+    code span.cv { color: #8f5902; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #8f5902; font-weight: bold; font-style: italic; } /* Documentation */
+    code span.dt { color: #204a87; } /* DataType */
+    code span.dv { color: #0000cf; } /* DecVal */
+    code span.er { color: #a40000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #0000cf; } /* Float */
+    code span.fu { color: #000000; } /* Function */
+    code span.im { } /* Import */
+    code span.in { color: #8f5902; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #204a87; font-weight: bold; } /* Keyword */
+    code span.op { color: #ce5c00; font-weight: bold; } /* Operator */
+    code span.ot { color: #8f5902; } /* Other */
+    code span.pp { color: #8f5902; font-style: italic; } /* Preprocessor */
+    code span.sc { color: #000000; } /* SpecialChar */
+    code span.ss { color: #4e9a06; } /* SpecialString */
+    code span.st { color: #4e9a06; } /* String */
+    code span.va { color: #000000; } /* Variable */
+    code span.vs { color: #4e9a06; } /* VerbatimString */
+    code span.wa { color: #8f5902; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+</head>
+<body>
+<h1 id="lightglue-onnx-architecture-and-the-onnx-runtime-pipeline">LightGlue-ONNX, Architecture and the ONNX Runtime Pipeline</h1>
+<p>Spent the day on the LightGlue-ONNX repo (https://github.com/fabio-sim/LightGlue-ONNX) and the ONNX Runtime performance documentation. The goal was to understand what LightGlue actually does differently from brute-force nearest-neighbor matching, and what the ONNX conversion pipeline looks like.</p>
+<h3 id="what-lightglue-is">What LightGlue is</h3>
+<p>LightGlue (Lindenberger et al., 2023) is a learned feature matcher that takes two sets of keypoints + descriptors and produces sparse correspondences. It is the successor to SuperGlue but significantly faster at inference time.</p>
+<p>The important architectural ideas,</p>
+<p><strong>Self- and cross-attention transformer</strong> — Each keypoint’s descriptor is updated by attending to other keypoints in the same image (self-attention, captures local context) and to keypoints in the other image (cross-attention, finds matches). This is done iteratively across multiple “layers” (default 9 in the full model).</p>
+<p><strong>Adaptive early exit</strong> — LightGlue predicts per-layer confidence in its assignment. If it is already confident enough after layer 3 or 4, it stops early. This is why LightGlue is faster than SuperGlue in practice — easy matching pairs exit early, hard ones go all the way through.</p>
+<p><strong>Soft assignment with dustbin</strong> — Like SuperGlue, it uses the Sinkhorn algorithm to solve an optimal transport problem on the assignment matrix, with a dustbin column for unmatched keypoints.</p>
+<p>The output is a list of (index_in_image_A, index_in_image_B) matched pairs with confidence scores.</p>
+<h3 id="onnx-conversion-pipeline">ONNX conversion pipeline</h3>
+<p>The fabio-sim repo exports both SuperPoint and LightGlue to ONNX using <code>torch.onnx.export</code>. The key challenge is that LightGlue has dynamic shapes (variable number of keypoints N, different for each image pair) and the optional early exit (dynamic control flow).</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true"></a><span class="co"># Simplified export call (from the repo&#39;s export script)</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true"></a>torch.onnx.export(</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true"></a>    model,</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true"></a>    (kpts0, kpts1, desc0, desc1),</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true"></a>    <span class="st">&quot;lightglue.onnx&quot;</span>,</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true"></a>    opset_version<span class="op">=</span><span class="dv">17</span>,</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true"></a>    input_names<span class="op">=</span>[<span class="st">&quot;kpts0&quot;</span>, <span class="st">&quot;kpts1&quot;</span>, <span class="st">&quot;desc0&quot;</span>, <span class="st">&quot;desc1&quot;</span>],</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true"></a>    output_names<span class="op">=</span>[<span class="st">&quot;matches0&quot;</span>, <span class="st">&quot;matches1&quot;</span>, <span class="st">&quot;mscores0&quot;</span>, <span class="st">&quot;mscores1&quot;</span>],</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true"></a>    dynamic_axes<span class="op">=</span>{</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true"></a>        <span class="st">&quot;kpts0&quot;</span>:  {<span class="dv">0</span>: <span class="st">&quot;batch&quot;</span>, <span class="dv">1</span>: <span class="st">&quot;num_kpts0&quot;</span>},</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true"></a>        <span class="st">&quot;kpts1&quot;</span>:  {<span class="dv">0</span>: <span class="st">&quot;batch&quot;</span>, <span class="dv">1</span>: <span class="st">&quot;num_kpts1&quot;</span>},</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true"></a>        <span class="st">&quot;desc0&quot;</span>:  {<span class="dv">0</span>: <span class="st">&quot;batch&quot;</span>, <span class="dv">1</span>: <span class="st">&quot;num_kpts0&quot;</span>},</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true"></a>        <span class="st">&quot;desc1&quot;</span>:  {<span class="dv">0</span>: <span class="st">&quot;batch&quot;</span>, <span class="dv">1</span>: <span class="st">&quot;num_kpts1&quot;</span>},</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true"></a>    }</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true"></a>)</span></code></pre></div>
+<p>The dynamic axes are critical. Without them, the ONNX model would only accept the exact input sizes used during export.</p>
+<p>The early exit is handled by either removing it for the ONNX version (fixed number of layers) or using ONNX’s <code>If</code> operator for conditional execution. The fabio-sim implementation disables adaptive depth for the ONNX export and fixes the number of layers, which simplifies the graph.</p>
+<h3 id="onnx-runtime-execution-providers">ONNX Runtime execution providers</h3>
+<p>ONNX Runtime (ORT) can run models on CPU, CUDA, TensorRT, or other backends via “execution providers.” On the GTX 1650 Ti:</p>
+<ul>
+<li><code>CUDAExecutionProvider</code> uses cuDNN for attention operations — this is the right choice for LightGlue</li>
+<li><code>TensorRTExecutionProvider</code> builds an optimized TRT engine — faster but requires TRT installed and has a slow first-run build time (minutes)</li>
+<li><code>CPUExecutionProvider</code> — baseline, no GPU</li>
+</ul>
+<p>For the GTX 1650 Ti with 4GB VRAM, TensorRT is marginal — the LightGlue model with default settings fits, but you lose VRAM budget for the rest of the pipeline. Using <code>CUDAExecutionProvider</code> with fp16 mode enabled gives a good tradeoff.</p>
+<h3 id="ort-session-options-for-performance">ORT session options for performance</h3>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true"></a><span class="im">import</span> onnxruntime <span class="im">as</span> ort</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true"></a>opts <span class="op">=</span> ort.SessionOptions()</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true"></a>opts.graph_optimization_level <span class="op">=</span> ort.GraphOptimizationLevel.ORT_ENABLE_ALL</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true"></a>opts.intra_op_num_threads <span class="op">=</span> <span class="dv">4</span>  <span class="co"># for CPU parallelism</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true"></a>providers <span class="op">=</span> [</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true"></a>    (<span class="st">&quot;CUDAExecutionProvider&quot;</span>, {</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true"></a>        <span class="st">&quot;device_id&quot;</span>: <span class="dv">0</span>,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true"></a>        <span class="st">&quot;arena_extend_strategy&quot;</span>: <span class="st">&quot;kNextPowerOfTwo&quot;</span>,</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true"></a>        <span class="st">&quot;gpu_mem_limit&quot;</span>: <span class="dv">2</span> <span class="op">*</span> <span class="dv">1024</span><span class="op">**</span><span class="dv">3</span>,   <span class="co"># 2 GB cap to leave room for other ops</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true"></a>        <span class="st">&quot;cudnn_conv_algo_search&quot;</span>: <span class="st">&quot;HEURISTIC&quot;</span>,</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true"></a>        <span class="st">&quot;do_copy_in_default_stream&quot;</span>: <span class="va">True</span>,</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true"></a>    }),</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true"></a>    <span class="st">&quot;CPUExecutionProvider&quot;</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true"></a>]</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true"></a></span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true"></a>session <span class="op">=</span> ort.InferenceSession(<span class="st">&quot;lightglue.onnx&quot;</span>, sess_options<span class="op">=</span>opts, providers<span class="op">=</span>providers)</span></code></pre></div>
+<h3 id="io-binding-for-zero-copy-gpu-inference">IO binding for zero-copy GPU inference</h3>
+<p>When inputs are already on GPU (as CUDA tensors), copying them to CPU for ORT and back to GPU wastes time. ORT’s IO binding avoids this:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true"></a>binding <span class="op">=</span> session.io_binding()</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true"></a>binding.bind_input(</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true"></a>    name<span class="op">=</span><span class="st">&quot;kpts0&quot;</span>,</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true"></a>    device_type<span class="op">=</span><span class="st">&quot;cuda&quot;</span>,</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true"></a>    device_id<span class="op">=</span><span class="dv">0</span>,</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true"></a>    element_type<span class="op">=</span>np.float32,</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true"></a>    shape<span class="op">=</span>kpts0.shape,</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true"></a>    buffer_ptr<span class="op">=</span>kpts0.data_ptr()   <span class="co"># if using PyTorch tensor</span></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true"></a>)</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true"></a>session.run_with_iobinding(binding)</span></code></pre></div>
+<p>This is important when SuperPoint (also GPU) feeds directly into LightGlue — you avoid two unnecessary CPU-GPU round trips.</p>
+<h3 id="what-the-full-pipeline-looks-like">What the full pipeline looks like</h3>
+<pre><code>Image A (GPU)                   Image B (GPU)
+    |                               |
+SuperPoint (ONNX, CUDA)        SuperPoint (ONNX, CUDA)
+    |                               |
+kpts_A, desc_A                 kpts_B, desc_B
+    \                              /
+     LightGlue (ONNX, CUDA)
+          |
+    matched indices + scores
+          |
+    Essential matrix estimation (OpenCV / MAGSAC)
+          |
+    Relative pose (R, t)</code></pre>
+<p>Total pipeline time on GTX 1650 Ti for 640x480 images: roughly 40-60 ms with CUDAExecutionProvider.</p>
+<p>References:</p>
+<ul>
+<li>https://github.com/fabio-sim/LightGlue-ONNX</li>
+<li>https://onnxruntime.ai/docs/performance/</li>
+<li>Lindenberger et al., “LightGlue: Local Feature Matching at Light Speed” (2023) — arXiv:2306.13643</li>
+<li>https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html</li>
+</ul>
+</body>
+</html>

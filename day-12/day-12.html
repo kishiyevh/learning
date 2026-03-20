@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>day-12</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+  </style>
+  <script src="/usr/share/javascript/mathjax/tex-mml-chtml.js" type="text/javascript"></script>
+</head>
+<body>
+<h1 id="px4-ekf2-state-vector-fusion-logic-and-tuning-parameters">PX4 EKF2 State Vector, Fusion Logic, and Tuning Parameters</h1>
+<h3 id="state-vector">State vector</h3>
+<p>EKF2 maintains a 23-element state vector:</p>
+<pre><code>[0:3]   Position (north, east, down) in local NED frame
+[3:6]   Velocity (north, east, down)
+[6:10]  Orientation quaternion (qw, qx, qy, qz)
+[10:13] IMU delta-angle bias (gyro bias in body frame)
+[13:16] IMU delta-velocity bias (accelerometer bias in body frame)
+[16:19] Earth magnetic field (NED)
+[19:21] Body magnetic field bias (x, y)
+[21:23] Wind velocity (north, east)</code></pre>
+<p>The covariance matrix P is 23x23. This is the matrix that quantifies uncertainty, diagonal entries are variances, off-diagonal entries capture correlations.</p>
+<h3 id="prediction-step">Prediction step</h3>
+<p>The IMU drives the prediction at ~1 kHz. The equations are nonlinear because attitude is represented as a quaternion and the rotation of the accelerometer measurement involves the current attitude estimate. The EKF2 uses the linearized Jacobian (which is why it is an Extended Kalman Filter, not a standard KF).</p>
+<p>The process model for velocity:</p>
+<p><span class="math display">\[\mathbf{v}_{k+1} = \mathbf{v}_k + \left(\mathbf{R}_{k} (\mathbf{a}_{body} - \mathbf{b}_a) + \mathbf{g}\right) \Delta t\]</span></p>
+<p>where <code>R_k</code> is the rotation matrix from body to NED, <code>a_body</code> is the accelerometer reading, <code>b_a</code> is the accelerometer bias estimate, and <code>g</code> is gravity in NED (0, 0, 9.81).</p>
+<h3 id="sensor-fusion">Sensor fusion</h3>
+<p>Each sensor update is processed independently as a “measurement update” step. The GPS gives position and velocity. The barometer gives height. The magnetometer gives heading (processed via a 3D magnetic field model). Each update uses the standard EKF update equations but with sensor-specific noise parameters.</p>
+<p>The measurement model for GPS position:</p>
+<p><span class="math display">\[\mathbf{z}_{GPS} = \mathbf{H}_{pos} \mathbf{x} + \mathbf{v}_{GPS}\]</span></p>
+<p>Where <code>H_pos = [I_{3x3}, 0_{3x20}]</code> just picks out the position states.</p>
+<h3 id="key-parameters-for-tuning">Key parameters for tuning</h3>
+<p>The parameters I spent the most time on:</p>
+<p><code>EKF2_GPS_NOISE</code> — GPS position measurement noise. Default 0.5 m. Increasing this makes the filter trust GPS less and rely more on the IMU model between GPS updates.</p>
+<p><code>EKF2_BARO_NOISE</code> — Barometer noise, default 3.5 m. In turbulent air, increase this.</p>
+<p><code>EKF2_GYR_NOISE</code>, <code>EKF2_ACC_NOISE</code> — Process noise for gyro and accelerometer. These control how quickly the bias estimates can change. Too low and the filter cannot track real bias drift; too high and the estimates become noisy.</p>
+<p><code>EKF2_GBIAS_INIT</code> — Initial uncertainty in gyro bias. Set this large if you do not have a prior.</p>
+<h3 id="innovation-monitoring">Innovation monitoring</h3>
+<p>The EKF2 monitors the ratio of innovation (measurement residual) to expected innovation standard deviation. If this ratio (called the “innovation test ratio”) exceeds a threshold, the measurement is rejected as an outlier. This is important for GPS spoofing or multipath rejection.</p>
+<pre><code>innovation_test_ratio = innovation^2 / (H P H^T + R)</code></pre>
+<p>If this exceeds <code>EKF2_INNOV_GATE</code> (default 5.0 in sigma units squared), the update is skipped.</p>
+<h3 id="where-to-find-this-in-code">Where to find this in code</h3>
+<p>The main EKF2 loop is in:</p>
+<pre><code>PX4-Autopilot/src/modules/ekf2/EKF2.cpp
+PX4-Autopilot/src/lib/ecl/EKF/ekf.cpp</code></pre>
+<p>The fusion functions are per-sensor:</p>
+<pre><code>PX4-Autopilot/src/lib/ecl/EKF/gps_yaw_fusion.cpp
+PX4-Autopilot/src/lib/ecl/EKF/baro_height_control.cpp
+PX4-Autopilot/src/lib/ecl/EKF/optflow_fusion.cpp</code></pre>
+<p>Reading <code>ekf.cpp</code> is dense but worth it the comments explain the math and the derivation of each Jacobian is spelled out. The code for the quaternion attitude update in <code>predictState()</code> matches the theory from Labbe’s Kalman book chapter on extended filters.</p>
+<h3 id="ekf2-and-a-simple-complementary-filter">EKF2 and a simple complementary filter</h3>
+<p>The complementary filter that Betaflight uses for attitude is; <code>attitude = alpha * (attitude + gyro * dt) + (1 - alpha) * accel_angle</code>. This works for attitude estimation but has no formal uncertainty model, no bias estimation, and no GPS/baro fusion. EKF2 is strictly more correct but also more complex and computationally expensive. On an STM32H7 at 480 MHz, EKF2 is too heavy for the full 1 kHz rate — it runs at 400 Hz with the inner attitude loop running from a simpler complementary filter update.</p>
+<p>References:</p>
+<ul>
+<li>https://docs.px4.io/main/en/advanced_config/tuning_the_ecl_ekf.html</li>
+<li>https://github.com/PX4/PX4-Autopilot/tree/main/src/lib/ecl/EKF</li>
+<li>Labbe, R. “Kalman and Bayesian Filters in Python” — Chapter 11 (Extended KF)</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>day-21</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+  </style>
+  <script src="/usr/share/javascript/mathjax/tex-mml-chtml.js" type="text/javascript"></script>
+</head>
+<body>
+<h1 id="full-state-estimation-loop-and-fusing-vo-with-imu-and-reviewing-the-stack">Full State Estimation Loop and Fusing VO with IMU and Reviewing the Stack</h1>
+<p>The document will be about integrating the visual odometry output with a simple IMU-preintegration-based EKF and doing a full review pass of everything covered since February 16.</p>
+<h3 id="imu-preintegration-in-brief">IMU preintegration in brief</h3>
+<p>Between two keyframes (let’s call them at times i and j), the IMU runs at 1 kHz and produces a stream of accelerometer and gyroscope readings. Rather than re-running the EKF prediction for each IMU sample every time the optimizer wants to evaluate a cost, you preintegrate all the IMU samples between i and j into a single relative motion constraint: <code>(Delta_R, Delta_v, Delta_p)</code>.</p>
+<p>The preintegrated rotation:</p>
+<p><span class="math display">\[\Delta R_{ij} = \prod_{k=i}^{j-1} \text{Exp}\left((\tilde{\omega}_k - b_g) \Delta t\right)\]</span></p>
+<p>The preintegrated velocity and position:</p>
+<p><span class="math display">\[\Delta v_{ij} = \sum_{k=i}^{j-1} \Delta R_{ik} (\tilde{a}_k - b_a) \Delta t\]</span></p>
+<p><span class="math display">\[\Delta p_{ij} = \sum_{k=i}^{j-1} \left[\Delta v_{ik} \Delta t + \frac{1}{2} \Delta R_{ik} (\tilde{a}_k - b_a) \Delta t^2\right]\]</span></p>
+<p>Here <code>b_g</code> and <code>b_a</code> are gyro and accel biases, and <code>Exp(.)</code> is the exponential map from the Lie algebra so(3) to SO(3) (converts rotation vector to rotation matrix).</p>
+<p>The important thing is that these integrals do not depend on the starting pose at frame i. This means if you change the pose estimate at i (during optimization), we do not have to redo the integration we just recompute the residual against the fixed preintegrated measurement. This is why preintegration fits naturally into factor graph optimizers.</p>
+<h3 id="ekf-fusion-of-vo-and-imu">EKF fusion of VO and IMU</h3>
+<p>Without a full factor graph optimizer (GTSAM, g2o), you can fuse VO and IMU in an EKF:</p>
+<ul>
+<li><strong>IMU prediction</strong>: propagate state at 1 kHz using accel and gyro</li>
+<li><strong>VO update</strong>: when a new keyframe pair gives a relative pose (R_vo, t_vo), use it as a measurement to correct position, velocity, and attitude</li>
+</ul>
+<p>The VO measurement model for position (assuming VO gives relative position in body frame):</p>
+<p><span class="math display">\[\mathbf{z}_{VO} = \mathbf{R}_{world}^T (\mathbf{p}_{k} - \mathbf{p}_{k-1}) + \mathbf{v}_{VO}\]</span></p>
+<p>where <code>v_VO</code> is the VO position noise (typically 0.05-0.1 m per keyframe step).</p>
+<p>In PX4 this is exactly what happens when you pipe external vision data into EKF2, the VO node publishes <code>vehicle_visual_odometry</code> messages and EKF2 treats the position component as a direct state measurement.</p>
+<h3 id="what-the-full-stack-would-look-like-presumably-on-a-drone">What the full stack would look like (presumably) on a drone</h3>
+<pre><code>Hardware layer:
+  IMU (ICM-42688, 8 kHz) -&gt; PX4 uORB -&gt; EKF2 prediction
+  GPS (u-blox M9N, 5 Hz) -&gt; PX4 uORB -&gt; EKF2 GPS fusion
+  Barometer (MS5611)       -&gt; PX4 uORB -&gt; EKF2 baro fusion
+  Camera (global shutter)  -&gt; ROS2 image topic -&gt; VO node
+
+VO node (runs on companion computer, e.g. Raspberry Pi 5, Mango Pi or Jetson Nano):
+  SuperPoint + LightGlue (ONNX, GPU) -&gt; Essential matrix -&gt; Relative pose
+  Publishes /fmu/in/vehicle_visual_odometry
+
+EKF2 (runs on flight controller, Pixhawk 6C):
+  Fuses IMU + GPS + baro + external vision
+  Publishes vehicle_odometry (position, velocity, attitude)
+
+Position controller -&gt; Velocity controller -&gt; Rate controller -&gt; ESCs</code></pre>
+<p>The companion computer talks to the flight controller over a UART or USB serial link via MAVLink/uXRCE-DDS.</p>
+<h3 id="latency-budget">Latency budget</h3>
+<p>The control loop needs state estimates at &gt;=100 Hz (10 ms budget). The IMU-driven EKF2 runs at this rate internally. The VO update arrives at ~10-20 Hz (50-100 ms) and simply corrects the running estimate without blocking the fast inner loop. This cascaded rate structure is standard in all commercial autopilots.</p>
+<h3 id="outcomes">Outcomes</h3>
+<p>The biggest gaps in the current understanding,</p>
+<ol type="1">
+<li><p>Full factor graph optimization (GTSAM) — the EKF approximation accumulates linearization errors. Factor graphs with iterative optimization (iSAM2) give better consistency.</p></li>
+<li><p>Place recognition / loop closure — the drift fix. Requires image retrieval (DBoW3 or NetVLAD) + geometric verification + pose graph optimization.</p></li>
+<li><p>Hardware integration — running the ONNX pipeline on a real Jetson with TensorRT, dealing with USB camera latency, hardware trigger synchronization between camera and IMU (crucial for VI-SLAM).</p></li>
+<li><p>PX4 EKF2 parameter tuning on real hardware — the SITL noise parameters are too clean. Real IMUs have temperature drift, vibration bias, and magnetic interference that require careful calibration.</p></li>
+</ol>
+<p>The C++ code in <code>imu_preintegration.cpp</code> implements the preintegration equations above with linearized covariance propagation, and <code>ekf_vo_imu.cpp</code> shows the EKF fusion loop connecting VO updates into the IMU prediction chain.</p>
+<p>References:</p>
+<ul>
+<li>Forster et al. “On-Manifold Preintegration for Real-Time Visual-Inertial Odometry” (TRO 2017) — arXiv:1512.02363</li>
+<li>https://github.com/rpng/open_vins</li>
+<li>https://docs.px4.io/main/en/ros/external_position_estimation.html</li>
+<li>Joan Sola “A micro Lie theory for state estimation in robotics” — arXiv:1812.01537</li>
+<li>https://vnav.mit.edu/lectures.html (Lectures 10-12)</li>
+</ul>
+</body>
+</html>

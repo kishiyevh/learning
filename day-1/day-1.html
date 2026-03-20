@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>day-1</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+  </style>
+  <script src="/usr/share/javascript/mathjax/tex-mml-chtml.js" type="text/javascript"></script>
+</head>
+<body>
+<h1 id="ros2-differential-drive-kinematics-and-the-rosbot-model">ROS2 Differential Drive Kinematics and the ROSbot Model</h1>
+<p>The main idea is straightforward. The ROSbot has four wheels but is modeled as two virtual wheels, WL and WR, whose axes pass through the robot’s geometric center. This lets you use the simpler differential drive kinematic equations without worrying about the geometry of each physical wheel separately. The virtual wheel velocities are just averages of their physical counterparts.</p>
+<p><span class="math display">\[\phi_{W_L} = \frac{\phi_{W_{FL}} + \phi_{W_{RL}}}{2}, \quad \phi_{W_R} = \frac{\phi_{W_{FR}} + \phi_{W_{RR}}}{2}\]</span></p>
+<p><span class="math display">\[\omega_{W_L} = \frac{\omega_{W_{FL}} + \omega_{W_{RL}}}{2}, \quad \omega_{W_R} = \frac{\omega_{W_{FR}} + \omega_{W_{RR}}}{2}\]</span></p>
+<p>From those angular velocities and the wheel radius <code>r</code>, you get linear velocities:</p>
+<p><span class="math display">\[v_L = \omega_{W_L} \cdot r, \quad v_R = \omega_{W_R} \cdot r\]</span></p>
+<p>The robot’s angular position and rate:</p>
+<p><span class="math display">\[\alpha = (\phi_{W_R} - \phi_{W_L}) \cdot \frac{r}{l_2}\]</span></p>
+<p><span class="math display">\[\dot{\alpha} = \frac{d\alpha}{dt}\]</span></p>
+<p>And then the full pose update:</p>
+<p><span class="math display">\[\dot{x}_c = \left(v_L + \dot{\alpha} \cdot \frac{r}{l_2}\right) \cos \alpha\]</span></p>
+<p><span class="math display">\[\dot{y}_c = \left(v_L + \dot{\alpha} \cdot \frac{r}{l_2}\right) \sin \alpha\]</span></p>
+<p><span class="math display">\[x_c = \int_0^t \dot{x}_c \, dt, \quad y_c = \int_0^t \dot{y}_c \, dt\]</span></p>
+<p>The term <code>l2</code> is the distance between the left and right wheels (the track width). Starting from (0, 0) the robot integrates its pose over time from wheel encoder data.</p>
+<p>One thing worth noting is the non-holonomic constraint. The ROSbot can only move forward/backward and rotate — it cannot slide sideways. This means not all 3 DOF are independently controllable. Mecanum or omni-wheel robots are holonomic and can do lateral translation, but they trade off simplicity for that capability.</p>
+<p>I wrote a ROS2 node that subscribes to <code>/joint_states</code> and computes odometry by hand using these equations, then publishes to <code>/odom</code>. This is basically what the motor driver node does internally, but doing it yourself makes the math concrete. The code is in <code>diff_drive_odom.py</code>.</p>
+<p>Visualization was the second part. I launched RViz2 and added the <code>Odometry</code> display type, then pointed it at <code>/odom</code>. Running <code>teleop_twist_keyboard</code> and watching the odometry arrow move in RViz2 while the math updates in real time is a good sanity check.</p>
+<p>References used today:</p>
+<ul>
+<li>https://husarion.com/tutorials/ros2-tutorials/4-kinematics-and-visualization/</li>
+<li>http://docs.ros.org/en/humble/p/geometry_msgs/</li>
+<li>https://wiki.ros.org/teleop_twist_keyboard</li>
+</ul>
+</body>
+</html>

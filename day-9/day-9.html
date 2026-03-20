@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>day-9</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+  </style>
+</head>
+<body>
+<h1 id="superpoint-and-how-learned-sparse-feature-detection-works">SuperPoint and how Learned Sparse Feature Detection Works</h1>
+<h3 id="sparse-vs-dense-features">Sparse vs dense features</h3>
+<p>A sparse feature detector picks a limited set of salient points in the image, corners, edges, blobs and describes each with a compact vector (descriptor). You end up with maybe 300-1000 keypoints per image.</p>
+<p>A dense method (like optical flow with RAFT, or feature maps from a CNN for metric localization) produces a feature for every pixel or every grid cell. This is more complete but computationally heavier and harder to use for geometric estimation, we don’t want to run RANSAC on 100,000 correspondences.</p>
+<p>For visual odometry and localization tasks where you need to estimate relative camera pose from two frames, sparse features + RANSAC is the practical choice. The geometry estimators (essential matrix, PnP) need relatively few correspondences to work well, and sparse matching keeps the pipeline fast.</p>
+<h3 id="what-superpoint-does">What SuperPoint does</h3>
+<p>SuperPoint is a self-supervised detector-descriptor network. It has two outputs from a shared encoder backbone:</p>
+<ol type="1">
+<li>A keypoint detector head — outputs a per-pixel probability that a keypoint exists there</li>
+<li>A descriptor head — outputs a 256-dim descriptor at each pixel location</li>
+</ol>
+<p>The architecture uses a VGG-style encoder that downsamples the input 8x. The detector head then has a channel for each position in the 8x8 cell (64 channels) plus a “no keypoint” channel (65 total), so it performs a 65-way softmax per 8x8 cell. This “dustbin” formulation avoids having to predict exact sub-pixel positions in the decoder, we get one keypoint per cell at most, or no keypoint (the dustbin wins).</p>
+<p>The descriptor head outputs a 256-dim vector at each of the 8x-downsampled spatial locations, then bilinear interpolates these to the keypoint positions.</p>
+<h3 id="self-supervised-training-via-homographic-adaptation">Self-supervised training via homographic adaptation</h3>
+<p>This is the interesting part. You cannot easily label ground-truth keypoints on real images. SuperPoint solves this by:</p>
+<ol type="1">
+<li>Pre-training a simple “MagicPoint” detector on synthetic shapes (lines, polygons, cubes) where ground-truth corners are exact.</li>
+<li>Applying random homographies to real images and using the MagicPoint detector to label corresponding point pairs across the warped views. Points that are consistently detected across many random warps become the training labels for the final SuperPoint network.</li>
+</ol>
+<p>This generates large-scale pseudo ground-truth without manual annotation.</p>
+<h3 id="superpoint-is-better-than-harrisorb">SuperPoint is better than Harris/ORB</h3>
+<p>Harris corners detect any local gradient structure and they don’t care if the corner is actually useful for matching across viewpoint changes. SuperPoint is trained with the objective of being repeatable across homographies, so the points it selects are specifically those that survive viewpoint changes well.</p>
+<p>ORB descriptors are binary (Hamming distance matching), which is fast but less discriminative than the 256-dim float descriptors SuperPoint produces. In low-texture or repetitive-texture scenes, ORB confuses similar-looking patches. SuperPoint’s learned descriptors capture more global context from the CNN’s receptive field.</p>
+<h3 id="what-the-inference-pipeline-looks-like">What the inference pipeline looks like</h3>
+<pre><code>Input image (grayscale)
+    |
+VGG encoder (8x downsample)
+    |
+    +-- Detector head --&gt; 65-way softmax per 8x8 cell
+    |       --&gt; non-max suppression --&gt; keypoint coordinates
+    |
+    +-- Descriptor head --&gt; 256-dim per spatial location
+            --&gt; bilinear sample at keypoint locations
+            --&gt; L2 normalize --&gt; final descriptors
+
+Output: (N, 2) keypoint coords + (N, 256) descriptors</code></pre>
+<p>The entire thing runs as a single forward pass. On a GPU it is fast like under 10 ms for a 480x640 image on a decent card. On the GTX 1650 Ti (4GB) it fits comfortably for inference.</p>
+<p>I wrote <code>superpoint_onnx_test.py</code> to load the ONNX export of SuperPoint and run it on a test image. The ONNX model is available from several repos including the LightGlue-ONNX one.</p>
+<h3 id="descriptor-space-and-matching">Descriptor space and matching</h3>
+<p>Descriptors live in a 256-dimensional L2-normalized space (unit sphere). Matching is done by cosine similarity (equivalent to dot product when normalized). The LightGlue matcher refines these matches with an attention-based neural network, which we will look at in detail later.</p>
+<p>References:</p>
+<ul>
+<li>DeTone, D., Malisiewicz, T., Rabinovich, A. “SuperPoint: Self-Supervised Interest Point Detection and Description” (2018) — arXiv:1712.07629</li>
+<li>https://github.com/magicleap/SuperPointPretrainedNetwork</li>
+<li>https://github.com/cvg/LightGlue</li>
+<li>https://vnav.mit.edu/lectures.html (Lecture 5 — Feature Detection)</li>
+</ul>
+</body>
+</html>

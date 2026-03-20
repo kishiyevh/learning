@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>day-7</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+  </style>
+  <script src="/usr/share/javascript/mathjax/tex-mml-chtml.js" type="text/javascript"></script>
+</head>
+<body>
+<h1 id="betaflight-vs-px4-flight-control-architecture-differences">Betaflight vs PX4 Flight Control Architecture Differences</h1>
+<p>Spent the day in the Betaflight Configurator source and comparing it against PX4’s control architecture. They solve the same base problem (keep a multirotor stable) but with very different priorities and design decisions.</p>
+<h3 id="who-they-are-designed-for">Who they are designed for</h3>
+<p>Betaflight is built for FPV racing and freestyle flying. The priority is raw performance, minimal latency between stick input and motor output, maximum responsiveness, the ability to do flips at full throttle. It does not have autonomous flight, GPS position hold in the traditional sense, or a full navigation stack.</p>
+<p>PX4 is designed for autonomous UAVs — missions, waypoints, position hold, return-to-home, payload delivery. It has a full estimation-navigation-control pipeline. The raw performance in manual mode is decent but not the focus.</p>
+<h3 id="control-loop-structure">Control loop structure</h3>
+<p>Betaflight runs its entire PID loop at up to 8 kHz. The gyro is sampled at 8 kHz, filtered, and fed into three independent PID controllers for roll, pitch, and yaw. The output goes directly to the ESC mixer with essentially zero abstraction layers.</p>
+<pre><code>Gyro (8kHz) --&gt; Filters --&gt; PID (roll/pitch/yaw) --&gt; Mixer --&gt; Motor outputs
+                ^
+            RC input</code></pre>
+<p>PX4 has a more layered architecture:</p>
+<pre><code>Mission/Offboard
+    |
+Navigator (position setpoints)
+    |
+Position Controller (velocity setpoints)   [~50 Hz]
+    |
+Velocity Controller (attitude setpoints)   [~50 Hz]
+    |
+Attitude Controller (rate setpoints)       [~250 Hz]
+    |
+Rate Controller (motor commands)           [~1000 Hz]
+    |
+Mixer --&gt; ESCs</code></pre>
+<p>Each layer runs at a different rate. The inner rate controller runs fastest. This cascaded structure gives cleaner separation of concerns but adds latency between a position command and a motor response.</p>
+<h3 id="pid-in-betaflight">PID in Betaflight</h3>
+<p>In Betaflight, <code>P</code> on roll means: if the gyro shows a roll rate error (stick wants 200 deg/s, gyro reads 180 deg/s), apply proportional correction. This is <strong>rate mode</strong> PID by default (ACRO mode). There is no absolute angle reference in rate mode.</p>
+<p>In Angle mode (ANGLE or HORIZON in Betaflight), there is an outer loop that converts desired angle to a desired rate setpoint, then feeds the inner rate PID. This is similar to PX4’s attitude controller structure, but simplified.</p>
+<h3 id="betaflights-rpm-filtering-and-notch-filters">Betaflight’s RPM filtering and notch filters</h3>
+<p>One thing Betaflight does that PX4 does not natively have is RPM-based dynamic notch filtering. Each ESC reports its motor RPM via bidirectional DSHOT. The filter knows the fundamental frequency of each propeller and creates notch filters at those frequencies (and harmonics) to kill propwash resonance. This is why modern Betaflight quads feel very smooth — the gyro data fed into the PID is extremely clean.</p>
+<p>From the Betaflight Configurator source (<code>src/main/flight/rpm_filter.c</code>), the notch center frequency for a given motor is:</p>
+<p><span class="math display">\[f_{notch} = \frac{RPM}{60}\]</span></p>
+<p>And harmonics at <code>2f</code>, <code>3f</code>. A Q factor of around 500 is typical, meaning the notch is very narrow.</p>
+<h3 id="px4-control-allocation">PX4 control allocation</h3>
+<p>PX4 has a control allocation layer (new in v1.14, replacing the old mixer system). Instead of hardcoded mixer files, you define actuator geometry in parameters and the allocator computes motor commands from body-frame forces and moments:</p>
+<p><span class="math display">\[\begin{bmatrix} F_z \\ M_x \\ M_y \\ M_z \end{bmatrix} = G \cdot \mathbf{u}\]</span></p>
+<p>Where <code>G</code> is the geometry matrix built from motor positions and directions, and <code>u</code> is the vector of motor thrusts. The allocator inverts this, with saturation handling for when the desired forces exceed what the actuators can produce.</p>
+<h3 id="summary-comparison">Summary comparison</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Property</th>
+<th>Betaflight</th>
+<th>PX4</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Loop rate</td>
+<td>up to 8 kHz</td>
+<td>1 kHz inner, 50 Hz outer</td>
+</tr>
+<tr class="even">
+<td>Autonomy</td>
+<td>None (GPS rescue only)</td>
+<td>Full navigation stack</td>
+</tr>
+<tr class="odd">
+<td>State estimation</td>
+<td>Simple complementary filter</td>
+<td>EKF2 (23-state)</td>
+</tr>
+<tr class="even">
+<td>Target users</td>
+<td>FPV pilots</td>
+<td>Researchers, commercial drones</td>
+</tr>
+<tr class="odd">
+<td>Latency (stick to motor)</td>
+<td>~1 ms</td>
+<td>~10 ms</td>
+</tr>
+<tr class="even">
+<td>RPM filtering</td>
+<td>Yes (bidirectional DSHOT)</td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
+<p>References:</p>
+<ul>
+<li>https://github.com/betaflight/betaflight-configurator</li>
+<li>https://github.com/betaflight/betaflight (firmware source)</li>
+<li>https://docs.px4.io/main/en/flight_stack/controller_diagrams.html</li>
+<li>https://docs.px4.io/main/en/concept/control_allocation.html</li>
+</ul>
+</body>
+</html>
