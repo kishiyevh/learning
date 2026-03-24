@@ -9,7 +9,8 @@ about this documentation.
    :caption: Docs
 
    home
-   Recent Developments in the field of AI-native Autonomous UAV Vehicles <showcase>
+   PROJECT 1 - Recent Developments in the field of AI-native Autonomous UAV Vehicles <showcase>
+   PROJECT 2 - NavRL Replication <navrl>
    day-1
    day-2
    day-3

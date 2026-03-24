@@ -1,6 +1,6 @@
 <!-- SECTION 1: INTRODUCTION -->
 
-# Recent Developments in the field of AI-native Autonomous UAV Vehicles
+# PROJECT 1 - Recent Developments in the field of AI-native Autonomous UAV Vehicles
 
 The domain of autonomous micro aerial vehicle (MAV) navigation is currently witnessing a divergence in engineering philosophy, driven by the starkly different requirements of operating environments. The challenges posed by unstructured, clutter-rich environments such as forests or collapsed buildings are fundamentally different from those found in structured, confined infrastructure like sewage tunnels or ventilation shafts.
 
